@@ -57,6 +57,7 @@ data/synthetic/images/**
 !data/synthetic/images/.gitkeep
 data/synthetic/masks/**
 !data/synthetic/masks/.gitkeep
+data/splits.csv
 
 # Generated outputs and temporary files
 artifacts/
@@ -82,4 +83,3 @@ mlruns/
 .DS_Store
 Thumbs.db
 Desktop.ini
-

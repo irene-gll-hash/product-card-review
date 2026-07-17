@@ -386,8 +386,8 @@ def generate_dataset(input_dir: str | Path, output_dir: str | Path, masks_dir: s
         raise NotADirectoryError(f"Папка с исходными изображениями не найдена: {input_path}")
     if masks_path is not None and not masks_path.is_dir():
         raise NotADirectoryError(f"Папка с масками не найдена: {masks_path}")
-    if input_path == output_path or input_path in output_path.parents:
-        raise ValueError("Папка результата не должна находиться внутри папки с исходными изображениями")
+    if (input_path == output_path or input_path in output_path.parents or output_path in input_path.parents):
+        raise ValueError("Папки исходных изображений и результата не должны пересекаться")
     if singles_per_defect < 1:
         raise ValueError("singles_per_defect должна быть не меньше 1")
     if combos_per_image < 0:
