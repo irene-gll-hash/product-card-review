@@ -1,43 +1,85 @@
-# Environment variables and secrets
+# Secrets and local configuration
 .env
 .env.*
 !.env.example
 
-# Python
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
-.venv/
-venv/
-
-# Test and tool caches
+*$py.class
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.coverage
+.hypothesis/
+.tox/
+.nox/
+.cache/
 
-# IDE settings
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Coverage and test output
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest-report/
+
+# Build and packaging artifacts
+build/
+dist/
+site/
+*.egg-info/
+.eggs/
+*.egg
+
+# Notebooks
+.ipynb_checkpoints/
+
+# IDE and editor settings
 .idea/
 .vscode/
 .gigaide/
+*.swp
+*.swo
 
-# Image datasets and generated output
-defects_dataset/
-good_images/*
-!good_images/.gitkeep
+# Local agent settings
+.agents/
+.codex/
 
-# Image files
-*.jpg
-*.jpeg
-*.png
-*.webp
-*.gif
-*.bmp
-*.tif
-*.tiff
+# Datasets: keep metadata files tracked, ignore binary source/generated data
+data/raw/**
+!data/raw/.gitkeep
+data/synthetic/images/**
+!data/synthetic/images/.gitkeep
+data/synthetic/masks/**
+!data/synthetic/masks/.gitkeep
 
-# OS files
-.DS_Store
-Thumbs.db
+# Generated outputs and temporary files
+artifacts/
+temp/
+tmp/
+runs/
+outputs/
+
+# Trained models and experiment logs
+checkpoints/
+wandb/
+mlruns/
+*.ckpt
+*.onnx
+*.pt
+*.pth
+*.safetensors
 
 # Logs
 *.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+

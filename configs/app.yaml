@@ -1,0 +1,30 @@
+application:
+  name: product-card-checker
+  environment: development
+
+runtime:
+  device: auto
+  precision: fp16
+  max_parallel_gpu_jobs: 1
+
+processing:
+  delete_temporary_files: true
+  temporary_file_ttl_hours: 24
+  process_images: true
+  process_videos: true
+  return_localization: true
+  return_severity: true
+  return_confidence: true
+
+results:
+  severity_min: 0
+  severity_max: 3
+  final_statuses:
+    - accepted
+    - rejected
+    - manual_review
+
+moderation:
+  enabled: true
+  save_confirmed_examples: true
+  save_corrected_labels: true

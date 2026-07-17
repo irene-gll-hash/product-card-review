@@ -1,0 +1,38 @@
+paths:
+  good_images_dir: data/raw/good_images
+  synthetic_dir: data/synthetic
+  images_dir: data/synthetic/images
+  masks_dir: data/synthetic/masks
+  labels_file: data/synthetic/labels.csv
+  splits_file: data/splits.csv
+  artifacts_dir: artifacts
+  temp_dir: temp
+
+dataset:
+  image_size: 512
+  batch_size: 8
+  num_workers: 4
+  seed: 42
+  train_ratio: 0.70
+  validation_ratio: 0.15
+  test_ratio: 0.15
+  split_group: card_id
+  severity_min: 0
+  severity_max: 3
+
+columns:
+  filename: filename
+  source_image: source_image
+  card_id: card_id
+  variant: variant
+  is_clean: is_clean
+  mask_source: mask_source
+  mask_filename: mask_filename
+
+defects:
+  - blur
+  - skew
+  - rotated
+  - zoomed_out
+  - noise
+  - wrong_colors

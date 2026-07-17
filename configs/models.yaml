@@ -1,0 +1,85 @@
+segmentation:
+  primary: segformer_b0
+  candidates:
+    unet:
+      architecture: unet
+      encoder: resnet34
+      role: baseline
+    deeplabv3plus:
+      architecture: deeplabv3plus
+      encoder: resnet50
+      role: comparison
+    segformer_b0:
+      architecture: segformer
+      checkpoint: nvidia/mit-b0
+      role: primary
+    sam:
+      architecture: sam
+      checkpoint: facebook/sam-vit-base
+      role: mask_annotation
+
+detection:
+  primary: rtdetr
+  candidates:
+    yolov8:
+      checkpoint: yolov8m.pt
+      role: baseline
+    yolov9:
+      checkpoint: yolov9c.pt
+      role: comparison
+    rtdetr:
+      checkpoint: rtdetr-l.pt
+      role: primary
+
+tracking:
+  primary: bytetrack
+  candidates:
+    - bytetrack
+    - deep_sort
+
+image_quality:
+  candidates:
+    - brisque
+    - musiq
+    - resnet
+    - efficientnet
+  severity_levels: 4
+
+ocr:
+  text_recognition:
+    primary: paddleocr
+    candidates:
+      - paddleocr
+      - easyocr
+  text_analysis:
+    candidates:
+      - rubert
+      - rubert_tiny
+  languages:
+    - ru
+    - en
+
+moderation:
+  nudity:
+    candidates:
+      - nudenet
+      - open_nsfw
+  weapons:
+    model: custom_detector
+  forbidden_symbols:
+    model: custom_detector
+
+video_motion:
+  candidates:
+    - farneback
+    - lucas_kanade_homography
+    - raft
+
+embeddings:
+  framework: open_clip
+  candidates:
+    - openai_clip
+    - openclip
+  vlm:
+    enabled: false
+    model: null
