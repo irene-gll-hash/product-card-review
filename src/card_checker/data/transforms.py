@@ -164,7 +164,7 @@ def build_train_transforms(
     )
 
 
-def build_eval_transforms(
+def build_validation_transforms(
     image_size: int = 256,
     normalize: bool = True,
 ) -> ProductCardTransforms:
@@ -180,7 +180,7 @@ def build_test_transforms(
         image_size: int = 256,
         normalize: bool = True,
 ) -> ProductCardTransforms:
-    return build_eval_transforms(
+    return build_validation_transforms(
         image_size=image_size,
         normalize=normalize,
     )
