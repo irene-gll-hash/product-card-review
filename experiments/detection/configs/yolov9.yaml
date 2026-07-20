@@ -1,0 +1,13 @@
+experiment: detection_yolov9
+task: object_detection
+model:
+  name: yolov9t
+  pretrained: true
+data:
+  config: configs/data.yaml
+training:
+  epochs: 50
+  image_size: 640
+  batch_size: 16
+output:
+  directory: experiments/detection/results/yolov9

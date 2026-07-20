@@ -1,0 +1,11 @@
+experiment: video_tracking_deepsort
+task: multi_object_tracking
+tracker:
+  name: deepsort
+  max_age: 30
+  n_init: 3
+  max_cosine_distance: 0.2
+detection:
+  config: experiments/detection/configs/yolov8.yaml
+output:
+  directory: experiments/video/tracking/results/deepsort

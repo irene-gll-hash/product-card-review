@@ -1,0 +1,14 @@
+experiment: segmentation_segformer_b0
+task: binary_segmentation
+model:
+  name: segformer_b0
+  pretrained: true
+  num_classes: 1
+data:
+  config: configs/data.yaml
+training:
+  epochs: 40
+  learning_rate: 0.0001
+  loss: dice_bce
+output:
+  directory: experiments/segmentation/results/segformer_b0

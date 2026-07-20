@@ -1,0 +1,12 @@
+experiment: video_tracking_bytetrack
+task: multi_object_tracking
+tracker:
+  name: bytetrack
+  track_high_threshold: 0.5
+  track_low_threshold: 0.1
+  match_threshold: 0.8
+  track_buffer: 30
+detection:
+  config: experiments/detection/configs/yolov8.yaml
+output:
+  directory: experiments/video/tracking/results/bytetrack

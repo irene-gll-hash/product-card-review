@@ -1,0 +1,10 @@
+experiment: video_motion_klt_homography
+task: camera_motion_estimation
+method:
+  name: klt_homography
+  max_corners: 500
+  quality_level: 0.01
+  minimum_distance: 8
+  ransac_reprojection_threshold: 3.0
+output:
+  directory: experiments/video/motion/results/klt_homography

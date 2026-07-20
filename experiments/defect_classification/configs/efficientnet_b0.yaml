@@ -1,0 +1,15 @@
+experiment: defect_classification_efficientnet_b0
+task: multilabel_classification
+model:
+  name: efficientnet_b0
+  pretrained: true
+  num_classes: 6
+data:
+  config: configs/data.yaml
+training:
+  epochs: 30
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  loss: bce_with_logits
+output:
+  directory: experiments/defect_classification/results/efficientnet_b0

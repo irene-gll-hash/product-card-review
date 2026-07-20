@@ -1,0 +1,10 @@
+experiment: video_motion_raft
+task: optical_flow
+model:
+  name: raft_small
+  pretrained: true
+inference:
+  iterations: 12
+  mixed_precision: true
+output:
+  directory: experiments/video/motion/results/raft

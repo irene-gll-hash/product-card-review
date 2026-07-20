@@ -1,0 +1,15 @@
+experiment: segmentation_deeplabv3plus
+task: binary_segmentation
+model:
+  name: deeplabv3plus
+  encoder: resnet50
+  encoder_pretrained: true
+  num_classes: 1
+data:
+  config: configs/data.yaml
+training:
+  epochs: 40
+  learning_rate: 0.0001
+  loss: dice_bce
+output:
+  directory: experiments/segmentation/results/deeplabv3plus

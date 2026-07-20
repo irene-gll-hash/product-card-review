@@ -1,0 +1,12 @@
+experiment: image_quality_musiq
+task: no_reference_image_quality
+model:
+  name: musiq
+  pretrained: true
+data:
+  config: configs/data.yaml
+evaluation:
+  lower_score_is_better: false
+  normalize_scores: true
+output:
+  directory: experiments/image_quality/results/musiq

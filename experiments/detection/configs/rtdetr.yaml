@@ -1,0 +1,13 @@
+experiment: detection_rtdetr
+task: object_detection
+model:
+  name: rtdetr_l
+  pretrained: true
+data:
+  config: configs/data.yaml
+training:
+  epochs: 50
+  image_size: 640
+  batch_size: 8
+output:
+  directory: experiments/detection/results/rtdetr

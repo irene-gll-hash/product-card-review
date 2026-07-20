@@ -1,0 +1,12 @@
+experiment: video_motion_farneback
+task: camera_motion_estimation
+method:
+  name: farneback
+  pyramid_scale: 0.5
+  levels: 3
+  window_size: 15
+  iterations: 3
+  poly_n: 5
+  poly_sigma: 1.2
+output:
+  directory: experiments/video/motion/results/farneback
