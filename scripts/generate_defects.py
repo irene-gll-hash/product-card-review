@@ -12,8 +12,8 @@ import cv2
 import numpy as np
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-DEFECT_NAMES = ("blur", "skew", "rotated", "zoomed_out", "noise", "wrong_colors")
-MASK_REQUIRED_DEFECTS = {"rotated", "zoomed_out"}
+DEFECT_NAMES = ("blur", "perspective_distortion", "rotated", "zoomed_out", "off_center", "cropped", "overexposed", "underexposed")
+MASK_REQUIRED_DEFECTS = {"rotated", "zoomed_out", "off_center", "cropped"}
 
 def sample_intensity() -> float:
     low, high = random.choice(((0.05, 0.35), (0.35, 0.70), (0.70, 1.00)))
@@ -124,13 +124,14 @@ def remove_product(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
         return background
     return cv2.inpaint(image, expanded_mask, 5, cv2.INPAINT_TELEA)
 
-def transform_product(image: np.ndarray, mask: np.ndarray, angle: float = 0.0, scale: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
+def transform_product(image: np.ndarray, mask: np.ndarray, angle: float = 0.0, scale: float = 1.0, shift_x: float = 0.0, shift_y: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
     points = cv2.findNonZero(mask)
     if points is None:
         raise ValueError("Маска товара пуста")
     x, y, width, height = cv2.boundingRect(points)
     center = (x + width / 2.0, y + height / 2.0)
     matrix = cv2.getRotationMatrix2D(center, angle, scale)
+    matrix[:, 2] += (shift_x, shift_y)
     transformed_image = cv2.warpAffine(image, matrix, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=background_color(image))
     transformed_mask = cv2.warpAffine(mask, matrix, (image.shape[1], image.shape[0]), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     background = remove_product(image, mask)
@@ -193,7 +194,7 @@ def add_blur(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray, np
         result, parameters = defocus_blur(image, intensity)
     return result, mask, intensity, parameters
 
-def add_skew(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray, np.ndarray | None, float, dict[str, Any]]:
+def add_perspective_distortion(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray, np.ndarray | None, float, dict[str, Any]]:
     intensity = sample_intensity()
     height, width = image.shape[:2]
     maximum_shift = max(1.0, min(width, height) * (0.01 + intensity * 0.16))
@@ -234,108 +235,52 @@ def add_zoom_out(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray
     result, transformed_mask = transform_product(image, mask, scale=scale)
     return result, transformed_mask, intensity, {"scale": round(scale, 4)}
 
-def gaussian_noise(image: np.ndarray, intensity: float) -> tuple[np.ndarray, dict[str, Any]]:
-    standard_deviation = 2.0 + intensity * 38.0
-    noise = np.random.normal(0.0, standard_deviation, image.shape).astype(np.float32)
-    result = np.clip(image.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-    return result, {"type": "gaussian", "standard_deviation": round(standard_deviation, 4)}
-
-def salt_pepper_noise(image: np.ndarray, intensity: float) -> tuple[np.ndarray, dict[str, Any]]:
-    amount = 0.001 + intensity * 0.05
-    random_map = np.random.random(image.shape[:2])
-    result = image.copy()
-    result[random_map < amount / 2.0] = 0
-    result[random_map > 1.0 - amount / 2.0] = 255
-    return result, {"type": "salt_pepper", "amount": round(amount, 6)}
-
-def poisson_noise(image: np.ndarray, intensity: float) -> tuple[np.ndarray, dict[str, Any]]:
-    poisson_level = 60.0 - intensity * 55.0
-    normalized = image.astype(np.float32) / 255.0
-    result = np.random.poisson(normalized * poisson_level) / poisson_level
-    result = np.clip(result * 255.0, 0, 255).astype(np.uint8)
-    return result, {"type": "poisson", "poisson_level": round(poisson_level, 4)}
-
-def jpeg_noise(image: np.ndarray, intensity: float) -> tuple[np.ndarray, dict[str, Any]]:
-    quality = max(15, int(round(95 - intensity * 80)))
-    success, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, quality])
-    if not success:
-        raise OSError("Не удалось создать JPEG-артефакты")
-    result = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
-    return result, {"type": "jpeg", "quality": quality}
-
-def add_noise(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray, np.ndarray | None, float, dict[str, Any]]:
+def add_off_center(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray, np.ndarray, float, dict[str, Any]]:
+    if mask is None:
+        raise ValueError("Для off_center необходима маска товара")
     intensity = sample_intensity()
-    noise_type = random.choice(("gaussian", "salt_pepper", "poisson", "jpeg"))
-    if noise_type == "gaussian":
-        result, parameters = gaussian_noise(image, intensity)
-    elif noise_type == "salt_pepper":
-        result, parameters = salt_pepper_noise(image, intensity)
-    elif noise_type == "poisson":
-        result, parameters = poisson_noise(image, intensity)
-    else:
-        result, parameters = jpeg_noise(image, intensity)
-    return result, mask, intensity, parameters
+    x, y, width, height = cv2.boundingRect(cv2.findNonZero(mask))
+    direction = random.choice(("left", "right", "up", "down"))
+    limits = {"left": x, "right": image.shape[1] - x - width, "up": y, "down": image.shape[0] - y - height}
+    shift = max(1, round(limits[direction] * (0.35 + intensity * 0.6)))
+    shift_x = -shift if direction == "left" else shift if direction == "right" else 0
+    shift_y = -shift if direction == "up" else shift if direction == "down" else 0
+    result, transformed_mask = transform_product(image, mask, shift_x=shift_x, shift_y=shift_y)
+    return result, transformed_mask, intensity, {"direction": direction, "shift_x_pixels": shift_x, "shift_y_pixels": shift_y}
 
-def apply_hue(image: np.ndarray, intensity: float) -> tuple[np.ndarray, dict[str, Any]]:
-    shift = random.choice((-1.0, 1.0)) * (3.0 + intensity * 42.0)
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
-    hsv[:, :, 0] = (hsv[:, :, 0] + shift) % 180
-    result = cv2.cvtColor(np.clip(hsv, 0, 255).astype(np.uint8), cv2.COLOR_HSV2BGR)
-    return result, {"operation": "hue", "shift": round(shift, 4)}
-
-def apply_saturation(image: np.ndarray, intensity: float) -> tuple[np.ndarray, dict[str, Any]]:
-    change = 0.08 + intensity * 0.82
-    factor = 1.0 + change if random.random() < 0.5 else max(0.1, 1.0 - change)
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
-    hsv[:, :, 1] = np.clip(hsv[:, :, 1] * factor, 0, 255)
-    result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-    return result, {"operation": "saturation", "factor": round(factor, 4)}
-
-def apply_brightness(image: np.ndarray, intensity: float) -> tuple[np.ndarray, dict[str, Any]]:
-    offset = random.choice((-1.0, 1.0)) * (4.0 + intensity * 76.0)
-    result = np.clip(image.astype(np.float32) + offset, 0, 255).astype(np.uint8)
-    return result, {"operation": "brightness", "offset": round(offset, 4)}
-
-def apply_contrast(image: np.ndarray, intensity: float) -> tuple[np.ndarray, dict[str, Any]]:
-    change = 0.05 + intensity * 0.65
-    factor = 1.0 + change if random.random() < 0.5 else max(0.25, 1.0 - change)
-    mean = np.mean(image, axis=(0, 1), keepdims=True)
-    result = np.clip((image.astype(np.float32) - mean) * factor + mean, 0, 255).astype(np.uint8)
-    return result, {"operation": "contrast", "factor": round(factor, 4)}
-
-def apply_temperature(image: np.ndarray, intensity: float) -> tuple[np.ndarray, dict[str, Any]]:
-    shift = random.choice((-1.0, 1.0)) * (4.0 + intensity * 66.0)
-    result = image.astype(np.float32)
-    result[:, :, 2] += shift
-    result[:, :, 0] -= shift
-    result = np.clip(result, 0, 255).astype(np.uint8)
-    return result, {"operation": "temperature", "shift": round(shift, 4)}
-
-COLOR_FUNCTIONS = {
-    "hue": apply_hue,
-    "saturation": apply_saturation,
-    "brightness": apply_brightness,
-    "contrast": apply_contrast,
-    "temperature": apply_temperature,
-}
-
-def add_wrong_colors(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray, np.ndarray | None, float, dict[str, Any]]:
+def add_cropped(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray, np.ndarray, float, dict[str, Any]]:
+    if mask is None:
+        raise ValueError("Для cropped необходима маска товара")
     intensity = sample_intensity()
-    operation_names = random.sample(list(COLOR_FUNCTIONS), random.randint(1, 3))
-    result = image.copy()
-    operations: list[dict[str, Any]] = []
-    for operation_name in operation_names:
-        result, parameters = COLOR_FUNCTIONS[operation_name](result, intensity)
-        operations.append(parameters)
-    return result, mask, intensity, {"operations": operations}
+    x, y, width, height = cv2.boundingRect(cv2.findNonZero(mask))
+    direction = random.choice(("left", "right", "up", "down"))
+    crop_fraction = 0.05 + intensity * 0.4
+    shifts = {"left": -(x + width * crop_fraction), "right": image.shape[1] - x - width + width * crop_fraction, "up": -(y + height * crop_fraction), "down": image.shape[0] - y - height + height * crop_fraction}
+    shift_x = shifts[direction] if direction in {"left", "right"} else 0.0
+    shift_y = shifts[direction] if direction in {"up", "down"} else 0.0
+    result, transformed_mask = transform_product(image, mask, shift_x=shift_x, shift_y=shift_y)
+    return result, transformed_mask, intensity, {"direction": direction, "crop_fraction": round(crop_fraction, 4), "shift_x_pixels": round(shift_x, 2), "shift_y_pixels": round(shift_y, 2)}
+
+def add_overexposed(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray, np.ndarray | None, float, dict[str, Any]]:
+    intensity = sample_intensity()
+    alpha = 1.05 + intensity * 0.75
+    beta = 10.0 + intensity * 80.0
+    return cv2.convertScaleAbs(image, alpha=alpha, beta=beta), mask, intensity, {"alpha": round(alpha, 4), "beta": round(beta, 4)}
+
+def add_underexposed(image: np.ndarray, mask: np.ndarray | None) -> tuple[np.ndarray, np.ndarray | None, float, dict[str, Any]]:
+    intensity = sample_intensity()
+    alpha = 0.9 - intensity * 0.75
+    return cv2.convertScaleAbs(image, alpha=alpha, beta=0), mask, intensity, {"alpha": round(alpha, 4), "beta": 0}
 
 DEFECT_FUNCTIONS = {
     "blur": add_blur,
-    "skew": add_skew,
+    "perspective_distortion": add_perspective_distortion,
     "rotated": add_rotation,
     "zoomed_out": add_zoom_out,
-    "noise": add_noise,
-    "wrong_colors": add_wrong_colors,
+    "off_center": add_off_center,
+    "cropped": add_cropped,
+    "overexposed": add_overexposed,
+    "underexposed": add_underexposed,
 }
 
 def apply_defects(image: np.ndarray, mask: np.ndarray | None, defect_names: list[str]) -> tuple[np.ndarray, np.ndarray | None, dict[str, dict[str, Any]], list[str]]:
@@ -386,7 +331,7 @@ def generate_dataset(input_dir: str | Path, output_dir: str | Path, masks_dir: s
         raise NotADirectoryError(f"Папка с исходными изображениями не найдена: {input_path}")
     if masks_path is not None and not masks_path.is_dir():
         raise NotADirectoryError(f"Папка с масками не найдена: {masks_path}")
-    if (input_path == output_path or input_path in output_path.parents or output_path in input_path.parents):
+    if input_path == output_path or input_path in output_path.parents or output_path in input_path.parents:
         raise ValueError("Папки исходных изображений и результата не должны пересекаться")
     if singles_per_defect < 1:
         raise ValueError("singles_per_defect должна быть не меньше 1")
@@ -452,16 +397,7 @@ def generate_dataset(input_dir: str | Path, output_dir: str | Path, masks_dir: s
             save_sample(f"{stem}_combo_{combination_number:02d}", "combo", result, transformed_mask, applied, order)
     if not rows:
         raise RuntimeError("Не удалось создать ни одного изображения")
-    fieldnames = [
-        "filename",
-        "source_image",
-        "card_id",
-        "variant",
-        "is_clean",
-        "defect_count",
-        "mask_source",
-        "mask_filename",
-    ]
+    fieldnames = ["filename", "source_image", "card_id", "variant", "is_clean", "defect_count", "mask_source", "mask_filename"]
     for defect_name in DEFECT_NAMES:
         fieldnames.extend((f"{defect_name}_present", f"{defect_name}_intensity"))
     fieldnames.append("parameters_json")

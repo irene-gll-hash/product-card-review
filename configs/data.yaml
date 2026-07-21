@@ -31,8 +31,10 @@ columns:
 
 defects:
   - blur
-  - skew
+  - perspective_distortion
   - rotated
   - zoomed_out
-  - noise
-  - wrong_colors
+  - off_center
+  - cropped
+  - overexposed
+  - underexposed

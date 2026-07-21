@@ -1,5 +1,4 @@
 """Загрузка изображений, масок и меток датасета карточек товаров."""
-
 from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
@@ -11,19 +10,12 @@ from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
 
-DEFECT_NAMES = ("blur", "skew", "rotated", "zoomed_out", "noise", "wrong_colors")
+DEFECT_NAMES = ("blur", "perspective_distortion", "rotated", "zoomed_out", "off_center", "cropped", "overexposed", "underexposed")
 VALID_SPLITS = {"train", "validation", "test"}
-
 Transform = Callable[..., dict[str, Any]]
 
 class ProductCardDataset(Dataset[dict[str, Any]]):
-    def __init__(
-        self,
-        labels_file: str | Path,
-        splits_file: str | Path,
-        split: str,
-        transform: Transform | None = None,
-    ) -> None:
+    def __init__(self, labels_file: str | Path, splits_file: str | Path, split: str, transform: Transform | None = None) -> None:
         self.labels_path = Path(labels_file).resolve()
         self.splits_path = Path(splits_file).resolve()
         self.data_root = self.labels_path.parent
@@ -84,13 +76,11 @@ class ProductCardDataset(Dataset[dict[str, Any]]):
             raise ValueError(f"В splits.csv присутствуют неизвестные выборки: {unknown_splits}")
 
         samples = labels.merge(splits[["card_id", "split"]], on="card_id", how="left", validate="many_to_one")
-
         if samples["split"].isna().any():
             missing_ids = sorted(samples.loc[samples["split"].isna(), "card_id"].unique())
             raise ValueError(f"Для некоторых card_id отсутствует разделение: {missing_ids}")
 
         self.samples = samples.loc[samples["split"] == split].reset_index(drop=True)
-
         if self.samples.empty:
             raise ValueError(f"В выборке {split!r} нет изображений")
 
@@ -99,7 +89,6 @@ class ProductCardDataset(Dataset[dict[str, Any]]):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         row = self.samples.iloc[index]
-
         image_path = self._resolve_path(row["filename"])
         if not image_path.is_file():
             raise FileNotFoundError(f"Изображение не найдено: {image_path}")
@@ -114,43 +103,29 @@ class ProductCardDataset(Dataset[dict[str, Any]]):
             mask_path = self._resolve_path(mask_filename)
             if not mask_path.is_file():
                 raise FileNotFoundError(f"Маска не найдена: {mask_path}")
-
             with Image.open(mask_path) as mask_file:
                 mask = np.array(mask_file.convert("L"), copy=True)
-
             mask = (mask > 0).astype(np.uint8)
         else:
             mask_path = None
             mask = np.zeros(image.shape[:2], dtype=np.uint8)
 
         if mask.shape != image.shape[:2]:
-            raise ValueError(
-                f"Размер маски {mask.shape} не совпадает с размером изображения "
-                f"{image.shape[:2]}: {image_path}"
-            )
+            raise ValueError(f"Размер маски {mask.shape} не совпадает с размером изображения {image.shape[:2]}: {image_path}")
 
         if self.transform is not None:
             transformed = self.transform(image=image, mask=mask)
-
             if "image" not in transformed:
                 raise ValueError("Преобразование не вернуло ключ image")
             if "mask" not in transformed:
                 raise ValueError("Преобразование не вернуло ключ mask")
-
             image = transformed["image"]
             mask = transformed["mask"]
 
         image_tensor = self._to_image_tensor(image)
         mask_tensor = self._to_mask_tensor(mask)
-
-        target = torch.tensor(
-            [float(row[f"{name}_present"]) for name in DEFECT_NAMES],
-            dtype=torch.float32,
-        )
-        intensities = torch.tensor(
-            [float(row[f"{name}_intensity"]) for name in DEFECT_NAMES],
-            dtype=torch.float32,
-        )
+        target = torch.tensor([float(row[f"{name}_present"]) for name in DEFECT_NAMES], dtype=torch.float32)
+        intensities = torch.tensor([float(row[f"{name}_intensity"]) for name in DEFECT_NAMES], dtype=torch.float32)
 
         return {
             "image": image_tensor,

@@ -1,5 +1,4 @@
 """Проверка изображений, масок и разметки синтетического датасета."""
-
 from __future__ import annotations
 import argparse
 import json
@@ -8,10 +7,10 @@ import cv2
 import numpy as np
 import pandas as pd
 
-DEFECT_NAMES = ("blur", "skew", "rotated", "zoomed_out", "noise", "wrong_colors")
+DEFECT_NAMES = ("blur", "perspective_distortion", "rotated", "zoomed_out", "off_center", "cropped", "overexposed", "underexposed")
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MASK_SOURCES = {"auto", "file", "none"}
-MASK_REQUIRED_DEFECTS = {"rotated", "zoomed_out"}
+MASK_REQUIRED_DEFECTS = {"rotated", "zoomed_out", "off_center", "cropped"}
 VARIANTS = {"clean", "single", "combo"}
 
 def read_image(path: Path, flags: int = cv2.IMREAD_COLOR) -> np.ndarray | None:
@@ -26,7 +25,7 @@ def read_image(path: Path, flags: int = cv2.IMREAD_COLOR) -> np.ndarray | None:
 def resolve_dataset_path(root: Path, relative_path: str) -> Path | None:
     if not relative_path:
         return None
-    candidate = (root/relative_path).resolve()
+    candidate = (root / relative_path).resolve()
     try:
         candidate.relative_to(root.resolve())
     except ValueError:
@@ -40,9 +39,10 @@ def validate_dataset(dataset_dir: str | Path, good_images_dir: str | Path, label
     errors: list[str] = []
     warnings: list[str] = []
 
-    def add_error(message:str) -> None:
+    def add_error(message: str) -> None:
         errors.append(message)
-    def add_warning(message:str) -> None:
+
+    def add_warning(message: str) -> None:
         warnings.append(message)
 
     if not dataset_path.is_dir():
@@ -54,28 +54,20 @@ def validate_dataset(dataset_dir: str | Path, good_images_dir: str | Path, label
 
     labels = pd.read_csv(labels_path, encoding="utf-8-sig", keep_default_na=False)
     if labels.empty:
-        add_error("labels.csv empty")
+        add_error("labels.csv пуст")
 
-    required_columns = [
-        "filename",
-        "source_image",
-        "card_id",
-        "variant",
-        "is_clean",
-        "defect_count",
-        "mask_source",
-        "mask_filename",
-        "parameters_json",
-    ]
-
+    required_columns = ["filename", "source_image", "card_id", "variant", "is_clean", "defect_count", "mask_source", "mask_filename", "parameters_json"]
     for defect_name in DEFECT_NAMES:
         required_columns.extend((f"{defect_name}_present", f"{defect_name}_intensity"))
+
     missing_columns = [column for column in required_columns if column not in labels.columns]
     if missing_columns:
         raise ValueError(f"В labels.csv отсутствуют колонки: {', '.join(missing_columns)}")
+
     numeric_columns = ["is_clean", "defect_count"]
     for defect_name in DEFECT_NAMES:
         numeric_columns.extend((f"{defect_name}_present", f"{defect_name}_intensity"))
+
     for column in numeric_columns:
         converted = pd.to_numeric(labels[column], errors="coerce")
         invalid_rows = converted[converted.isna()].index.tolist()
@@ -83,12 +75,10 @@ def validate_dataset(dataset_dir: str | Path, good_images_dir: str | Path, label
             add_error(f"Строка {index + 2}: колонка {column} содержит не число")
         labels[column] = converted
 
-    duplicate_filenames = labels.loc[
-        labels["filename"].duplicated(keep=False),
-        "filename",
-    ]
+    duplicate_filenames = labels.loc[labels["filename"].duplicated(keep=False), "filename"]
     for filename in sorted(duplicate_filenames.unique()):
         add_error(f"Повторяющийся filename: {filename}")
+
     empty_card_ids = labels.index[labels["card_id"].astype(str).str.strip() == ""].tolist()
     for index in empty_card_ids:
         add_error(f"Строка {index + 2}: пустой card_id")
@@ -101,7 +91,7 @@ def validate_dataset(dataset_dir: str | Path, good_images_dir: str | Path, label
         filename = str(row["filename"]).strip()
         source_image = str(row["source_image"]).strip()
         variant = str(row["variant"]).strip()
-        mask_source = str(row["mask_source"])
+        mask_source = str(row["mask_source"]).strip()
         mask_filename = str(row["mask_filename"]).strip()
 
         if variant not in VARIANTS:
@@ -122,7 +112,6 @@ def validate_dataset(dataset_dir: str | Path, good_images_dir: str | Path, label
                 add_error(f"Строка {line}: изображение не открывается: {filename}")
             elif image.ndim != 3 or image.shape[2] != 3:
                 add_error(f"Строка {line}: изображение должно иметь три цветовых канала: {filename}")
-
 
         source_path = resolve_dataset_path(good_images_path, source_image)
         if source_path is None:
@@ -165,7 +154,6 @@ def validate_dataset(dataset_dir: str | Path, good_images_dir: str | Path, label
             intensity_column = f"{defect_name}_intensity"
             present = row[present_column]
             intensity = row[intensity_column]
-
             if pd.isna(present) or pd.isna(intensity):
                 continue
             if present not in (0, 1):
@@ -180,18 +168,19 @@ def validate_dataset(dataset_dir: str | Path, good_images_dir: str | Path, label
             if present == 1:
                 present_defects.add(defect_name)
 
-        if present_defects & MASK_REQUIRED_DEFECTS and not mask_filename:
-            add_error(
-                f"Строка {line}: для rotated или zoomed_out необходима маска товара"
-            )
+        required_masks = present_defects & MASK_REQUIRED_DEFECTS
+        if required_masks and not mask_filename:
+            add_error(f"Строка {line}: для {', '.join(sorted(required_masks))} необходима маска товара")
 
         defect_count = row["defect_count"]
         is_clean = row["is_clean"]
+
         if not pd.isna(defect_count):
             if not float(defect_count).is_integer():
                 add_error(f"Строка {line}: defect_count должен быть целым числом")
             elif int(defect_count) != len(present_defects):
                 add_error(f"Строка {line}: defect_count={int(defect_count)}, фактически дефектов={len(present_defects)}")
+
         if not pd.isna(is_clean):
             if is_clean not in (0, 1):
                 add_error(f"Строка {line}: is_clean должен быть равен 0 или 1")
@@ -210,20 +199,27 @@ def validate_dataset(dataset_dir: str | Path, good_images_dir: str | Path, label
         except json.JSONDecodeError:
             add_error(f"Строка {line}: некорректный parameters_json")
             continue
+
         if not isinstance(parameters, dict):
             add_error(f"Строка {line}: parameters_json должен содержать объект")
             continue
 
         application_order = parameters.get("application_order")
         parameter_defects = parameters.get("defects")
+
         if not isinstance(application_order, list):
             add_error(f"Строка {line}: application_order должен быть списком")
+
         if not isinstance(parameter_defects, dict):
             add_error(f"Строка {line}: defects внутри parameters_json должен быть объектом")
         else:
             parameter_names = set(parameter_defects)
             if parameter_names != present_defects:
                 add_error(f"Строка {line}: дефекты в parameters_json не совпадают с колонками *_present")
+            for defect_name, defect_parameters in parameter_defects.items():
+                if not isinstance(defect_parameters, dict) or not defect_parameters:
+                    add_error(f"Строка {line}: параметры дефекта {defect_name} должны быть непустым объектом")
+
         if isinstance(application_order, list) and set(application_order) != present_defects:
             add_error(f"Строка {line}: application_order не совпадает с обнаруженными дефектами")
 
@@ -234,6 +230,7 @@ def validate_dataset(dataset_dir: str | Path, good_images_dir: str | Path, label
 
     for path in sorted(actual_images - referenced_images):
         add_warning(f"Изображение не указано в labels.csv: {path.relative_to(dataset_path)}")
+
     for path in sorted(actual_masks - referenced_masks):
         add_warning(f"Маска не указана в labels.csv: {path.relative_to(dataset_path)}")
 
